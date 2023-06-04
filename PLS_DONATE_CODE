@@ -1,0 +1,142 @@
+local Players = game:GetService("Players")
+local TextService = game:GetService("TextService")
+local GuiService = game:GetService("GuiService")
+local RobuxService = game:GetService("MarketplaceService")
+
+-- Constants for text display
+local MAX_LINES = 10  -- Maximum number of lines to display
+local SCROLL_SPEED = 50  -- Speed of scrolling in pixels per second
+
+-- Function to display interactive text with scrolling capability
+local function displayText(player, text)
+    local screenSize = GuiService:GetScreenResolution(Vector2.new())
+    local frameSize = UDim2.new(0, screenSize.X * 0.4, 0, screenSize.Y * 0.4)
+
+    -- Create a frame to hold the scrolling text
+    local frame = Instance.new("Frame")
+    frame.Size = frameSize
+    frame.Position = UDim2.new(0.5, -frameSize.X.Offset * 0.5, 0.5, -frameSize.Y.Offset * 0.5)
+    frame.BackgroundColor3 = Color3.new(1, 1, 1)
+    frame.BorderSizePixel = 2
+    frame.Parent = player.PlayerGui
+
+    -- Create a text label to display the game passes
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Size = UDim2.new(1, 0, 1, 0)
+    textLabel.Text = text
+    textLabel.TextColor3 = Color3.new(0, 0, 0)
+    textLabel.Font = Enum.Font.SourceSans
+    textLabel.TextSize = 18
+    textLabel.TextWrapped = true
+    textLabel.Parent = frame
+
+    -- Enable scrolling if the text exceeds the frame size
+    local textBounds = TextService:GetTextSize(text, textLabel.TextSize, textLabel.Font, frameSize)
+    if textBounds.Y > frameSize.Y.Offset then
+        local startPos = 0
+        local updateTime = 0
+        local elapsed = 0
+
+        -- Update function for scrolling text
+        local function updateScrolling()
+            elapsed = elapsed + updateTime
+
+            local yOffset = math.floor(startPos - (elapsed * SCROLL_SPEED))
+            if yOffset <= -textBounds.Y then
+                yOffset = frameSize.Y.Offset
+                elapsed = 0
+            end
+
+            textLabel.Position = UDim2.new(0, 0, 0, yOffset)
+        end
+
+        -- Start scrolling
+        game:GetService("RunService").RenderStepped:Connect(updateScrolling)
+    end
+end
+
+-- Function to prompt the player to buy Robux or purchase a game pass
+local function promptPurchase(player, gamePass)
+    local playerRobux = RobuxService:GetPlayerRobuxAsync(player.UserId)
+    local gamePassPrice = gamePass.PriceInRobux
+
+    if playerRobux >= gamePassPrice then
+        local confirmPurchase = false
+
+        -- Prompt to buy the game pass
+        local promptDialog = Instance.new("Dialog")
+        promptDialog.Title = "Purchase Game Pass"
+        promptDialog.Body = "You have enough Robux to purchase this game pass. Would you like to proceed?"
+        promptDialog.CancelText = "Cancel"
+        promptDialog.ConfirmText = "Purchase"
+
+        local dialogResult = promptDialog:ShowAsync()
+
+        if dialogResult == Enum.DialogResult.Confirm then
+            confirmPurchase = true
+        end
+
+        -- Process the purchase
+        if confirmPurchase then
+                        -- Deduct the Robux from the player's balance
+            local purchaseSuccess, purchaseError = pcall(function()
+                RobuxService:PromptPurchase(player, gamePass.ProductId)
+            end)
+
+            if purchaseSuccess then
+                -- Purchase successful
+                print("Game pass purchased!")
+            else
+                -- Purchase failed
+                warn("Failed to purchase game pass:", purchaseError)
+            end
+        end
+    else
+        -- Prompt to buy Robux
+        local promptDialog = Instance.new("Dialog")
+        promptDialog.Title = "Insufficient Robux"
+        promptDialog.Body = "You don't have enough Robux to purchase this game pass. Would you like to buy more?"
+        promptDialog.CancelText = "Cancel"
+        promptDialog.ConfirmText = "Buy Robux"
+
+        local dialogResult = promptDialog:ShowAsync()
+
+        if dialogResult == Enum.DialogResult.Confirm then
+            -- Redirect the player to the Robux purchase page
+            RobuxService:PromptBuyRobux(player)
+        end
+    end
+end
+
+local function getPlayerGamePasses(player)
+    local playerGamePasses = {}
+
+    -- Get the player's GamePasses
+    local gamePassService = game:GetService("MarketplaceService")
+    local gamePasses = gamePassService:GetProductInfo(gamePassService:GetPlayerProductInfo(player.UserId))
+
+    -- Add each GamePass to the playerGamePasses table
+    for _, gamePass in pairs(gamePasses) do
+        table.insert(playerGamePasses, gamePass)
+    end
+
+    return playerGamePasses
+end
+
+-- Example usage: retrieving game passes for a specific player and displaying them
+local targetPlayer = Players:FindFirstChild("PlayerName") -- Replace "PlayerName" with the actual player's name
+if targetPlayer then
+    local gamePasses = getPlayerGamePasses(targetPlayer)
+
+    -- Format the game passes into a string
+    local text = "Game Passes:\n\n"
+    for _, gamePass in pairs(gamePasses) do
+        text = text .. "GamePass ID: " .. gamePass.ProductId .. "\n"
+        text = text .. "GamePass Name: " .. gamePass.Name .. "\n"
+        text = text .. "GamePass Description: " .. gamePass.Description .. "\n"
+        text = text .. "GamePass Price: " .. gamePass.PriceInRobux .. " Robux\n\n"
+    end
+
+    -- Display the game passes to the player
+    displayText(targetPlayer, text)
+end
